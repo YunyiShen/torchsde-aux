@@ -75,21 +75,21 @@ class ForwardSDE(BaseSDE):
     ########################################
     #                  f                   #
     ########################################
-    def f_default(self, t, y):
+    def f_default(self, t, y, aux):
         raise RuntimeError("Method `f` has not been provided, but is required for this method.")
 
     ########################################
     #                  g                   #
     ########################################
-    def g_default(self, t, y):
+    def g_default(self, t, y, aux):
         raise RuntimeError("Method `g` has not been provided, but is required for this method.")
 
     ########################################
     #               f_and_g                #
     ########################################
 
-    def f_and_g_default(self, t, y):
-        return self.f(t, y), self.g(t, y)
+    def f_and_g_default(self, t, y, aux):
+        return self.f(t, y, aux), self.g(t, y, aux)
 
     ########################################
     #                prod                  #
@@ -105,18 +105,18 @@ class ForwardSDE(BaseSDE):
     #                g_prod                #
     ########################################
 
-    def g_prod_default(self, t, y, v):
-        return self.prod(self.g(t, y), v)
+    def g_prod_default(self, t, y, aux, v):
+        return self.prod(self.g(t, y, aux), v)
 
     ########################################
     #             f_and_g_prod             #
     ########################################
 
-    def f_and_g_prod_default1(self, t, y, v):
-        return self.f(t, y), self.g_prod(t, y, v)
+    def f_and_g_prod_default1(self, t, y, aux, v):
+        return self.f(t, y, aux), self.g_prod(t, y, aux, v)
 
-    def f_and_g_prod_default2(self, t, y, v):
-        f, g = self.f_and_g(t, y)
+    def f_and_g_prod_default2(self, t, y, aux, v):
+        f, g = self.f_and_g(t, y, aux)
         return f, self.prod(g, v)
 
     ########################################
@@ -124,11 +124,11 @@ class ForwardSDE(BaseSDE):
     ########################################
 
     # Computes: g_prod and sum_{j, l} g_{j, l} d g_{j, l} d x_i v2_l.
-    def g_prod_and_gdg_prod_default(self, t, y, v1, v2):
+    def g_prod_and_gdg_prod_default(self, t, y, aux, v1, v2):
         requires_grad = torch.is_grad_enabled()
         with torch.enable_grad():
             y = y if y.requires_grad else y.detach().requires_grad_(True)
-            g = self.g(t, y)
+            g = self.g(t, y, aux)
             vg_dg_vjp, = misc.vjp(
                 outputs=g,
                 inputs=y,
@@ -139,11 +139,11 @@ class ForwardSDE(BaseSDE):
             )
         return self.prod(g, v1), vg_dg_vjp
 
-    def g_prod_and_gdg_prod_diagonal(self, t, y, v1, v2):
+    def g_prod_and_gdg_prod_diagonal(self, t, y, aux, v1, v2):
         requires_grad = torch.is_grad_enabled()
         with torch.enable_grad():
             y = y if y.requires_grad else y.detach().requires_grad_(True)
-            g = self.g(t, y)
+            g = self.g(t, y, aux)
             vg_dg_vjp, = misc.vjp(
                 outputs=g,
                 inputs=y,
@@ -154,19 +154,19 @@ class ForwardSDE(BaseSDE):
             )
         return self.prod(g, v1), vg_dg_vjp
 
-    def g_prod_and_gdg_prod_additive(self, t, y, v1, v2):
-        return self.g_prod(t, y, v1), 0.
+    def g_prod_and_gdg_prod_additive(self, t, y, aux, v1, v2):
+        return self.g_prod(t, y, aux, v1), 0.
 
     ########################################
     #              dg_ga_jvp               #
     ########################################
 
     # Computes: sum_{j,k,l} d g_{i,l} / d x_j g_{j,k} A_{k,l}.
-    def dg_ga_jvp_column_sum_v1(self, t, y, a):
+    def dg_ga_jvp_column_sum_v1(self, t, y, aux, a):
         requires_grad = torch.is_grad_enabled()
         with torch.enable_grad():
             y = y if y.requires_grad else y.detach().requires_grad_(True)
-            g = self.g(t, y)
+            g = self.g(t, y, aux)
             ga = torch.bmm(g, a)
             dg_ga_jvp = [
                 misc.jvp(
@@ -182,12 +182,12 @@ class ForwardSDE(BaseSDE):
             dg_ga_jvp = sum(dg_ga_jvp)
         return dg_ga_jvp
 
-    def dg_ga_jvp_column_sum_v2(self, t, y, a):
+    def dg_ga_jvp_column_sum_v2(self, t, y, aux, a):
         # Faster, but more memory intensive.
         requires_grad = torch.is_grad_enabled()
         with torch.enable_grad():
             y = y if y.requires_grad else y.detach().requires_grad_(True)
-            g = self.g(t, y)
+            g = self.g(t, y, aux)
             ga = torch.bmm(g, a)
 
             batch_size, d, m = g.size()
@@ -205,7 +205,7 @@ class ForwardSDE(BaseSDE):
             dg_ga_jvp = dg_ga_jvp.diagonal(dim1=-2, dim2=-1).sum(-1)
         return dg_ga_jvp
 
-    def _return_zero(self, t, y, v):  # noqa
+    def _return_zero(self, t, y, aux, v):  # noqa
         return 0.
 
 
@@ -263,43 +263,43 @@ class SDELogqp(BaseSDE):
             self.g = self.g_general
             self.f_and_g = self.f_and_g_general
 
-    def f_diagonal(self, t, y: Tensor):
+    def f_diagonal(self, t, y: Tensor, aux):
         y = y[:, :-1]
-        f, g, h = self._base_f(t, y), self._base_g(t, y), self._base_h(t, y)
+        f, g, h = self._base_f(t, y, aux), self._base_g(t, y, aux), self._base_h(t, y, aux)
         u = misc.stable_division(f - h, g)
         f_logqp = .5 * (u ** 2).sum(dim=1, keepdim=True)
         return torch.cat([f, f_logqp], dim=1)
 
-    def g_diagonal(self, t, y: Tensor):
+    def g_diagonal(self, t, y: Tensor, aux):
         y = y[:, :-1]
-        g = self._base_g(t, y)
+        g = self._base_g(t, y, aux)
         g_logqp = y.new_zeros(size=(y.size(0), 1))
         return torch.cat([g, g_logqp], dim=1)
 
-    def f_and_g_diagonal(self, t, y: Tensor):
+    def f_and_g_diagonal(self, t, y: Tensor, aux):
         y = y[:, :-1]
-        f, g, h = self._base_f(t, y), self._base_g(t, y), self._base_h(t, y)
+        f, g, h = self._base_f(t, y, aux), self._base_g(t, y, aux), self._base_h(t, y, aux)
         u = misc.stable_division(f - h, g)
         f_logqp = .5 * (u ** 2).sum(dim=1, keepdim=True)
         g_logqp = y.new_zeros(size=(y.size(0), 1))
         return torch.cat([f, f_logqp], dim=1), torch.cat([g, g_logqp], dim=1)
 
-    def f_general(self, t, y: Tensor):
+    def f_general(self, t, y: Tensor, aux):
         y = y[:, :-1]
-        f, g, h = self._base_f(t, y), self._base_g(t, y), self._base_h(t, y)
+        f, g, h = self._base_f(t, y, aux), self._base_g(t, y, aux), self._base_h(t, y, aux)
         u = misc.batch_mvp(g.pinverse(), f - h)  # (batch_size, brownian_size).
         f_logqp = .5 * (u ** 2).sum(dim=1, keepdim=True)
         return torch.cat([f, f_logqp], dim=1)
 
-    def g_general(self, t, y: Tensor):
+    def g_general(self, t, y: Tensor, aux):
         y = y[:, :-1]
-        g = self._base_sde.g(t, y)
+        g = self._base_sde.g(t, y, aux)
         g_logqp = y.new_zeros(size=(g.size(0), 1, g.size(-1)))
         return torch.cat([g, g_logqp], dim=1)
 
-    def f_and_g_general(self, t, y: Tensor):
+    def f_and_g_general(self, t, y: Tensor, aux):
         y = y[:, :-1]
-        f, g, h = self._base_f(t, y), self._base_g(t, y), self._base_h(t, y)
+        f, g, h = self._base_f(t, y, aux), self._base_g(t, y, aux), self._base_h(t, y, aux)
         u = misc.batch_mvp(g.pinverse(), f - h)  # (batch_size, brownian_size).
         f_logqp = .5 * (u ** 2).sum(dim=1, keepdim=True)
         g_logqp = y.new_zeros(size=(g.size(0), 1, g.size(-1)))

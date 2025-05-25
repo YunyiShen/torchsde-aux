@@ -26,19 +26,19 @@ class Midpoint(base_solver.BaseSDESolver):
         self.strong_order = 0.5 if sde.noise_type == NOISE_TYPES.general else 1.0
         super(Midpoint, self).__init__(sde=sde, **kwargs)
 
-    def step(self, t0, t1, y0, extra0):
+    def step(self, t0, t1, y0, aux, extra0):
         del extra0
         dt = t1 - t0
         I_k = self.bm(t0, t1)
 
-        f, g_prod = self.sde.f_and_g_prod(t0, y0, I_k)
+        f, g_prod = self.sde.f_and_g_prod(t0, y0, aux, I_k)
 
         half_dt = 0.5 * dt
 
         t_prime = t0 + half_dt
         y_prime = y0 + half_dt * f + 0.5 * g_prod
 
-        f_prime, g_prod_prime = self.sde.f_and_g_prod(t_prime, y_prime, I_k)
+        f_prime, g_prod_prime = self.sde.f_and_g_prod(t_prime, y_prime, aux, I_k)
 
         y1 = y0 + dt * f_prime + g_prod_prime
 

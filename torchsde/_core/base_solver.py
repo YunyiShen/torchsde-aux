@@ -89,12 +89,13 @@ class BaseSDESolver(metaclass=better_abc.ABCMeta):
         """
         raise NotImplementedError
 
-    def integrate(self, y0: Tensor, ts: Tensor, extra0: Tensors) -> Tuple[Tensor, Tensors]:
+    def integrate(self, y0: Tensor, ts: Tensor, aux:Tensor, extra0: Tensors) -> Tuple[Tensor, Tensors]:
         """Integrate along trajectory.
 
         Args:
             y0: Tensor of size (batch_size, d)
             ts: Tensor of size (T,).
+            aux: auxiliry parameters depend on sde, of size (batch, ...)
             extra0: Any extra state for the solver.
 
         Returns:
@@ -116,11 +117,11 @@ class BaseSDESolver(metaclass=better_abc.ABCMeta):
                 next_t = min(curr_t + step_size, ts[-1])
                 if self.adaptive:
                     # Take 1 full step.
-                    next_y_full, _ = self.step(curr_t, next_t, curr_y, curr_extra)
+                    next_y_full, _ = self.step(curr_t, next_t, curr_y, aux, curr_extra)
                     # Take 2 half steps.
                     midpoint_t = 0.5 * (curr_t + next_t)
-                    midpoint_y, midpoint_extra = self.step(curr_t, midpoint_t, curr_y, curr_extra)
-                    next_y, next_extra = self.step(midpoint_t, next_t, midpoint_y, midpoint_extra)
+                    midpoint_y, midpoint_extra = self.step(curr_t, midpoint_t, curr_y, aux, curr_extra)
+                    next_y, next_extra = self.step(midpoint_t, next_t, midpoint_y, aux, midpoint_extra)
 
                     # Estimate error based on difference between 1 full step and 2 half steps.
                     with torch.no_grad():
@@ -142,7 +143,7 @@ class BaseSDESolver(metaclass=better_abc.ABCMeta):
                         curr_t, curr_y, curr_extra = next_t, next_y, next_extra
                 else:
                     prev_t, prev_y = curr_t, curr_y
-                    curr_y, curr_extra = self.step(curr_t, next_t, curr_y, curr_extra)
+                    curr_y, curr_extra = self.step(curr_t, next_t, curr_y, aux, curr_extra)
                     curr_t = next_t
             ys.append(interp.linear_interp(t0=prev_t, y0=prev_y, t1=curr_t, y1=curr_y, t=out_t))
 

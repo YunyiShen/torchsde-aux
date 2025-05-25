@@ -54,7 +54,7 @@ class SRK(base_solver.BaseSDESolver):
         # Just to make @abstractmethod happy, as we assign during __init__.
         raise RuntimeError
 
-    def diagonal_or_scalar_step(self, t0, t1, y0, extra0):
+    def diagonal_or_scalar_step(self, t0, t1, y0, aux, extra0):
         del extra0
         dt = t1 - t0
         rdt = 1 / dt
@@ -68,8 +68,8 @@ class SRK(base_solver.BaseSDESolver):
         for s in range(srid2.STAGES):
             H0s, H1s = y0, y0  # Values at the current stage to be accumulated.
             for j in range(s):
-                f = self.sde.f(t0 + srid2.C0[j] * dt, H0[j])
-                g = self.sde.g(t0 + srid2.C1[j] * dt, H1[j])
+                f = self.sde.f(t0 + srid2.C0[j] * dt, H0[j], aux)
+                g = self.sde.g(t0 + srid2.C1[j] * dt, H1[j], aux)
                 g = g.squeeze(2) if g.dim() == 3 else g
                 H0s = H0s + srid2.A0[s][j] * f * dt + srid2.B0[s][j] * g * I_k0 * rdt
                 H1s = H1s + srid2.A1[s][j] * f * dt + srid2.B1[s][j] * g * sqrt_dt
@@ -83,11 +83,11 @@ class SRK(base_solver.BaseSDESolver):
                     srid2.beta3[s] * I_k0 * rdt +
                     srid2.beta4[s] * I_kkk * rdt
             )
-            g_prod = self.sde.g_prod(t0 + srid2.C1[s] * dt, H1s, g_weight)
+            g_prod = self.sde.g_prod(t0 + srid2.C1[s] * dt, H1s, aux, g_weight)
             y1 = y1 + srid2.alpha[s] * f * dt + g_prod
         return y1, ()
 
-    def additive_step(self, t0, t1, y0, extra0):
+    def additive_step(self, t0, t1, y0, aux, extra0):
         del extra0
         dt = t1 - t0
         rdt = 1 / dt
@@ -100,12 +100,12 @@ class SRK(base_solver.BaseSDESolver):
             for j in range(i):
                 f = self.sde.f(t0 + sra1.C0[j] * dt, H0[j])
                 g_weight = sra1.B0[i][j] * I_k0 * rdt
-                g_prod = self.sde.g_prod(t0 + sra1.C1[j] * dt, y0, g_weight)
+                g_prod = self.sde.g_prod(t0 + sra1.C1[j] * dt, y0, aux, g_weight)
                 H0i = H0i + sra1.A0[i][j] * f * dt + g_prod
             H0.append(H0i)
 
             f = self.sde.f(t0 + sra1.C0[i] * dt, H0i)
             g_weight = sra1.beta1[i] * I_k + sra1.beta2[i] * I_k0 * rdt
-            g_prod = self.sde.g_prod(t0 + sra1.C1[i] * dt, y0, g_weight)
+            g_prod = self.sde.g_prod(t0 + sra1.C1[i] * dt, y0, aux, g_weight)
             y1 = y1 + sra1.alpha[i] * f * dt + g_prod
         return y1, ()

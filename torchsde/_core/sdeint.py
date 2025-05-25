@@ -27,6 +27,7 @@ from ..types import Any, Dict, Optional, Scalar, Tensor, Tensors, TensorOrTensor
 def sdeint(sde,
            y0: Tensor,
            ts: Vector,
+           aux: Tensor,
            bm: Optional[BaseBrownian] = None,
            method: Optional[str] = None,
            dt: Scalar = 1e-3,
@@ -51,6 +52,7 @@ def sdeint(sde,
         y0 (Tensor): A tensor for the initial state.
         ts (Tensor or sequence of float): Query times in non-descending order.
             The state at the first time of `ts` should be `y0`.
+        aux (Tensor): A tensor for auxilary info for the sde to take
         bm (Brownian, optional): A 'BrownianInterval', `BrownianPath` or
             `BrownianTree` object. Should return tensors of size (batch_size, m)
             for `__call__`. Defaults to `BrownianInterval`.
@@ -90,7 +92,7 @@ def sdeint(sde,
     misc.handle_unused_kwargs(unused_kwargs, msg="`sdeint`")
     del unused_kwargs
 
-    sde, y0, ts, bm, method, options = check_contract(sde, y0, ts, bm, method, adaptive, options, names, logqp)
+    sde, y0, ts, bm, method, options = check_contract(sde, y0, ts, aux, bm, method, adaptive, options, names, logqp)
     misc.assert_no_grad(['ts', 'dt', 'rtol', 'atol', 'dt_min'],
                         [ts, dt, rtol, atol, dt_min])
 
@@ -107,12 +109,12 @@ def sdeint(sde,
     )
     if extra_solver_state is None:
         extra_solver_state = solver.init_extra_solver_state(ts[0], y0)
-    ys, extra_solver_state = solver.integrate(y0, ts, extra_solver_state)
+    ys, extra_solver_state = solver.integrate(y0, ts, aux, extra_solver_state)
 
     return parse_return(y0, ys, extra_solver_state, extra, logqp)
 
 
-def check_contract(sde, y0, ts, bm, method, adaptive, options, names, logqp):
+def check_contract(sde, y0, ts, aux, bm, method, adaptive, options, names, logqp):
     if names is None:
         names_to_change = {}
     else:
@@ -200,16 +202,16 @@ def check_contract(sde, y0, ts, bm, method, adaptive, options, names, logqp):
     has_g = False
     if hasattr(sde, 'f'):
         has_f = True
-        f_drift_shape = tuple(sde.f(ts[0], y0).size())
+        f_drift_shape = tuple(sde.f(ts[0], y0, aux).size())
         _check_2d('Drift', f_drift_shape)
     if hasattr(sde, 'g'):
         has_g = True
-        g_diffusion_shape = tuple(sde.g(ts[0], y0).size())
+        g_diffusion_shape = tuple(sde.g(ts[0], y0, aux).size())
         _check_2d_or_3d('Diffusion', g_diffusion_shape)
     if hasattr(sde, 'f_and_g'):
         has_f = True
         has_g = True
-        _f, _g = sde.f_and_g(ts[0], y0)
+        _f, _g = sde.f_and_g(ts[0], y0, aux)
         f_drift_shape = tuple(_f.size())
         g_diffusion_shape = tuple(_g.size())
         _check_2d('Drift', f_drift_shape)
@@ -220,7 +222,7 @@ def check_contract(sde, y0, ts, bm, method, adaptive, options, names, logqp):
             raise ValueError("Cannot infer noise size (i.e. number of Brownian motion channels). Either pass `bm` "
                              "explicitly, or specify one of the `g`, `f_and_g` functions.`")
         v = torch.randn(batch_sizes[0], noise_sizes[0], dtype=y0.dtype, device=y0.device)
-        g_prod_shape = tuple(sde.g_prod(ts[0], y0, v).size())
+        g_prod_shape = tuple(sde.g_prod(ts[0], y0, aux, v).size())
         _check_2d('Diffusion-vector product', g_prod_shape)
     if hasattr(sde, 'f_and_g_prod'):
         has_f = True
@@ -229,7 +231,7 @@ def check_contract(sde, y0, ts, bm, method, adaptive, options, names, logqp):
             raise ValueError("Cannot infer noise size (i.e. number of Brownian motion channels). Either pass `bm` "
                              "explicitly, or specify one of the `g`, `f_and_g` functions.`")
         v = torch.randn(batch_sizes[0], noise_sizes[0], dtype=y0.dtype, device=y0.device)
-        _f, _g_prod = sde.f_and_g_prod(ts[0], y0, v)
+        _f, _g_prod = sde.f_and_g_prod(ts[0], y0, aux, v)
         f_drift_shape = tuple(_f.size())
         g_prod_shape = tuple(_g_prod.size())
         _check_2d('Drift', f_drift_shape)

@@ -58,7 +58,7 @@ class ReversibleHeun(base_solver.BaseSDESolver):
     def init_extra_solver_state(self, t0, y0):
         return self.sde.f_and_g(t0, y0) + (y0,)
 
-    def step(self, t0, t1, y0, extra0):
+    def step(self, t0, t1, y0, aux, extra0):
         f0, g0, z0 = extra0
         # f is a drift-like quantity
         # g is a diffusion-like quantity
@@ -67,7 +67,7 @@ class ReversibleHeun(base_solver.BaseSDESolver):
         dW = self.bm(t0, t1)
 
         z1 = 2 * y0 - z0 + f0 * dt + self.sde.prod(g0, dW)
-        f1, g1 = self.sde.f_and_g(t1, z1)
+        f1, g1 = self.sde.f_and_g(t1, z1, aux)
         y1 = y0 + (f0 + f1) * (0.5 * dt) + self.sde.prod(g0 + g1, 0.5 * dW)
 
         return y1, (f1, g1, z1)
@@ -91,17 +91,17 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
         else:
             self._adjoint_of_prod = lambda tensor1, tensor2: tensor1.unsqueeze(-1) * tensor2.unsqueeze(-2)
 
-    def init_extra_solver_state(self, t0, y0):
+    def init_extra_solver_state(self, t0, y0, aux):
         # We expect to always be given the extra state from the forward pass.
         raise RuntimeError("Please report a bug to torchsde.")
 
-    def step(self, t0, t1, y0, extra0):
+    def step(self, t0, t1, y0, aux, extra0):
         forward_f0, forward_g0, forward_z0 = extra0
         dt = t1 - t0
         dW = self.bm(t0, t1)
         half_dt = 0.5 * dt
         half_dW = 0.5 * dW
-        forward_y0, adj_y0, (adj_f0, adj_g0, adj_z0, *adj_params), requires_grad = self.sde.get_state(t0, y0,
+        forward_y0, adj_y0, (adj_f0, adj_g0, adj_z0, *adj_params), requires_grad = self.sde.get_state(t0, y0
                                                                                                       extra_states=True)
         adj_y0_half_dt = adj_y0 * half_dt
         adj_y0_half_dW = self._adjoint_of_prod(adj_y0, half_dW)
@@ -130,7 +130,7 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
         adj_z0 = adj_z0 + vjp_z
         adj_params = misc.seq_add(adj_params, vjp_params)
 
-        forward_f1, forward_g1 = self.forward_sde.f_and_g(-t1, forward_z1)
+        forward_f1, forward_g1 = self.forward_sde.f_and_g(-t1, forward_z1, aux)
         forward_y1 = forward_y0 - (forward_f0 + forward_f1) * half_dt - self.forward_sde.prod(forward_g0 + forward_g1,
                                                                                               half_dW)
 
