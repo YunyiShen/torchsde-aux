@@ -131,7 +131,7 @@ class _SdeintAdjointMethod(torch.autograd.Function):
 def sdeint_adjoint(sde: nn.Module,
                    y0: Tensor,
                    ts: Vector,
-                   aux: Tensor, 
+                   aux: Optional[Tensor] = None, 
                    bm: Optional[BaseBrownian] = None,
                    method: Optional[str] = None,
                    adjoint_method: Optional[str] = None,
@@ -162,7 +162,7 @@ def sdeint_adjoint(sde: nn.Module,
         y0 (Tensor): A tensor for the initial state.
         ts (Tensor or sequence of float): Query times in non-descending order.
             The state at the first time of `ts` should be `y0`.
-        aux (Tensor): A tensor for auxiliry info for the SDE model
+        aux (Tensor, optional): A tensor for auxiliry info for the SDE model
         bm (Brownian, optional): A 'BrownianInterval', `BrownianPath` or
             `BrownianTree` object. Should return tensors of size (batch_size, m)
             for `__call__`. Defaults to `BrownianInterval`.

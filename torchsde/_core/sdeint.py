@@ -27,7 +27,7 @@ from ..types import Any, Dict, Optional, Scalar, Tensor, Tensors, TensorOrTensor
 def sdeint(sde,
            y0: Tensor,
            ts: Vector,
-           aux: Tensor,
+           aux: Optional[Tensor] = None,
            bm: Optional[BaseBrownian] = None,
            method: Optional[str] = None,
            dt: Scalar = 1e-3,

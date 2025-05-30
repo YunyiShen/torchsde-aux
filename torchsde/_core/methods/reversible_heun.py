@@ -101,7 +101,7 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
         dW = self.bm(t0, t1)
         half_dt = 0.5 * dt
         half_dW = 0.5 * dW
-        forward_y0, adj_y0, (adj_f0, adj_g0, adj_z0, *adj_params), requires_grad = self.sde.get_state(t0, y0
+        forward_y0, adj_y0, (adj_f0, adj_g0, adj_z0, *adj_params), requires_grad = self.sde.get_state(t0, y0,
                                                                                                       extra_states=True)
         adj_y0_half_dt = adj_y0 * half_dt
         adj_y0_half_dW = self._adjoint_of_prod(adj_y0, half_dW)
